@@ -1,0 +1,343 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import sqlite3, csv, webbrowser, re, json
+from datetime import datetime
+
+DB = "techmatch_ai.db"
+
+# ---------------- DATABASE ----------------
+def db():
+    return sqlite3.connect(DB)
+
+def init_db():
+    con = db(); c = con.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS products(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, category TEXT,
+        price REAL, rating REAL, quality REAL, performance REAL,
+        value REAL, ram INTEGER, storage INTEGER, screen REAL,
+        battery REAL, gpu TEXT, cpu TEXT, weight REAL, brand TEXT,
+        gaming INTEGER, coding INTEGER, ai_ml INTEGER, editing INTEGER,
+        portability INTEGER, camera INTEGER, url TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS wishlist(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER,
+        created TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS searches(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, query TEXT, created TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS builds(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, total REAL,
+        components TEXT, created TEXT)""")
+    if c.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0:
+        products = [
+        ("Lenovo LOQ 15","Laptop",74990,4.5,9.1,9.4,9.0,16,1000,15.6,7.5,"RTX 4050","Core i7",2.4,"Lenovo",94,98,92,88,65,70),
+        ("ASUS TUF Gaming F15","Laptop",69990,4.4,8.8,9.0,9.1,16,512,15.6,7.2,"RTX 3050","Core i5",2.3,"ASUS",91,94,82,84,66,65),
+        ("Acer Aspire 3","Laptop",42990,4.2,7.8,7.0,9.2,16,512,15.6,8.0,"Integrated","Ryzen 5",1.8,"Acer",55,91,65,65,84,55),
+        ("HP Victus 15","Laptop",67990,4.4,8.7,8.8,8.8,16,512,15.6,7.0,"RTX 3050","Ryzen 5",2.3,"HP",88,93,80,86,65,60),
+        ("MacBook Air M4","Laptop",99900,4.7,9.5,9.0,8.0,16,512,13.6,9.5,"Integrated","Apple M4",1.2,"Apple",62,98,88,91,98,80),
+        ("Samsung Galaxy S25 FE","Phone",59999,4.5,9.0,9.1,8.6,8,256,6.7,9.0,"Integrated","Exynos",0.19,"Samsung",88,82,72,70,92,94),
+        ("Google Pixel 9a","Phone",49999,4.5,8.9,8.4,9.0,8,256,6.3,9.2,"Integrated","Tensor",0.19,"Google",76,80,74,68,96,98),
+        ("OnePlus 13R","Phone",42999,4.6,8.8,9.3,9.4,12,256,6.78,9.0,"Integrated","Snapdragon",0.21,"OnePlus",96,82,78,72,85,91),
+        ("Redmi Pad 2","Tablet",19999,4.4,8.2,7.8,9.3,8,256,11,8.8,"Integrated","MediaTek",0.52,"Xiaomi",65,82,70,70,88,65),
+        ("Samsung Galaxy Tab S10 Lite","Tablet",32999,4.5,8.8,8.4,8.6,8,128,10.9,9.0,"Integrated","Exynos",0.52,"Samsung",70,88,74,76,87,72),
+        ("LG 24G411A Gaming Monitor","Monitor",11999,4.4,8.6,8.8,9.0,0,0,24,0,"Integrated","",3.2,"LG",95,70,60,75,60,40),
+        ("Lenovo LOQ 27Q-10","Monitor",22999,4.5,9.0,9.2,8.8,0,0,27,0,"Integrated","",4.8,"Lenovo",98,82,70,91,50,40),
+        ("Ant Esports MK3400 V3 Pro","Keyboard",2499,4.3,8.0,8.5,9.0,0,0,0,0,"","",0.8,"Ant Esports",92,80,45,60,50,0),
+        ("Portronics Toad One","Mouse",699,4.2,7.8,8.0,9.4,0,0,0,0,"","",0.1,"Portronics",90,82,40,50,70,0),
+        ("AMD Ryzen 7 9700X","CPU",32999,4.7,9.5,9.6,8.7,0,0,0,0,"","Ryzen 7 9700X",0.0,"AMD",94,100,96,95,0,0),
+        ("AMD Ryzen 5 9600X","CPU",23999,4.6,9.0,9.1,9.2,0,0,0,0,"","Ryzen 5 9600X",0.0,"AMD",88,98,88,86,0,0),
+        ("NVIDIA RTX 5070","GPU",64999,4.7,9.6,9.8,8.5,0,0,0,0,"RTX 5070","",0.0,"NVIDIA",99,90,99,98,0,0),
+        ("NVIDIA RTX 5060","GPU",39999,4.6,9.0,9.2,9.0,0,0,0,0,"RTX 5060","",0.0,"NVIDIA",94,84,91,92,0,0),
+        ("Corsair Vengeance 16GB DDR5","RAM",4999,4.7,9.2,8.4,9.2,16,0,0,0,"","",0.05,"Corsair",80,90,92,88,0,0),
+        ("WD Black SN850X 1TB","SSD",8999,4.7,9.3,9.0,9.0,0,1000,0,0,"","",0.06,"WD",75,95,94,92,0,0),
+        ]
+        sql = """INSERT INTO products
+        (name,category,price,rating,quality,performance,value,ram,storage,screen,battery,gpu,cpu,weight,brand,gaming,coding,ai_ml,editing,portability,camera,url)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
+        for p in products:
+            c.execute(sql, p + ("https://www.google.com/search?q="+p[0].replace(" ","+"),))
+    con.commit(); con.close()
+
+# ---------------- ENGINE ----------------
+def parse_requirements(text):
+    s=text.lower()
+    budget=None
+    m=re.search(r'(?:₹|rs\.?|inr)?\s*([0-9]+(?:\.[0-9]+)?)\s*(k|l|lakh)?', s)
+    if m:
+        n=float(m.group(1)); unit=m.group(2)
+        if unit=="k": n*=1000
+        elif unit in ("l","lakh"): n*=100000
+        if n >= 5000: budget=n
+    category="Laptop"
+    for x in ["phone","laptop","tablet","monitor","keyboard","mouse","cpu","gpu","ram","ssd"]:
+        if x in s: category=x.title(); break
+    tasks=[]
+    if any(x in s for x in ["game","gaming","gta","fps","esports"]): tasks.append("gaming")
+    if any(x in s for x in ["code","coding","programming","android studio","vs code","developer"]): tasks.append("coding")
+    if any(x in s for x in ["ai","ml","machine learning","tensorflow","pytorch"]): tasks.append("ai_ml")
+    if any(x in s for x in ["edit","premiere","video","photoshop","design"]): tasks.append("editing")
+    ram=16 if any(x in s for x in ["16gb","16 gb","32gb","32 gb"]) else 0
+    storage=512 if any(x in s for x in ["512","1tb","1 tb","storage"]) else 0
+    priority="performance" if any(x in s for x in ["performance","powerful","fast"]) else "value"
+    if "battery" in s: priority="battery"
+    if "portable" in s or "lightweight" in s: priority="portability"
+    return category,budget,tasks,ram,storage,priority
+
+def recommend(category,budget,tasks,ram,storage,priority,limit=12):
+    con=db(); rows=con.execute("SELECT * FROM products WHERE category=?",(category,)).fetchall(); con.close()
+    out=[]
+    for r in rows:
+        # indexes based on SELECT *
+        price,rating,quality,perf,value = r[3:8]
+        score=0
+        if budget:
+            if price<=budget: budget_score=100
+            else: budget_score=max(0,100-(price-budget)/budget*150)
+        else: budget_score=80
+        score += budget_score*0.25
+        score += quality*10*0.15
+        score += rating*20*0.10
+        score += value*10*0.15
+        score += perf*10*0.15
+        if ram: score += min(100,(r[8]/ram)*100 if r[8] else 0)*0.05
+        if storage: score += min(100,(r[9]/storage)*100 if r[9] else 0)*0.05
+        task_scores=[r[16] if t=="gaming" else r[17] if t=="coding" else r[18] if t=="ai_ml" else r[19] for t in tasks]
+        score += (sum(task_scores)/len(task_scores) if task_scores else 75)*0.10
+        if priority=="battery": score += r[11]*10*0.10
+        elif priority=="portability": score += (100-r[14]/3*100 if r[14] else 50)*0.10
+        out.append((score,r))
+    return sorted(out,key=lambda x:x[0],reverse=True)[:limit]
+
+# ---------------- APP ----------------
+class App:
+    def __init__(self,root):
+        self.root=root; self.root.title("TechMatch AI X"); self.root.geometry("1250x780")
+        self.root.minsize(1050,700); self.dark=True; self.current=[]; self.selected=set()
+        self.build_ui(); self.home()
+
+    def style(self):
+        bg="#10131a" if self.dark else "#f4f6fa"; fg="#f4f6fa" if self.dark else "#151922"
+        card="#181d27" if self.dark else "#ffffff"; accent="#6c63ff"
+        self.root.configure(bg=bg)
+        st=ttk.Style(); st.theme_use("clam")
+        st.configure(".",font=("Segoe UI",10),background=bg,foreground=fg)
+        st.configure("TFrame",background=bg); st.configure("Card.TFrame",background=card)
+        st.configure("TLabel",background=bg,foreground=fg)
+        st.configure("Card.TLabel",background=card,foreground=fg)
+        st.configure("Title.TLabel",font=("Segoe UI",24,"bold"),background=bg,foreground=fg)
+        st.configure("Sub.TLabel",font=("Segoe UI",11),background=bg,foreground=("#aab2c0" if self.dark else "#667085"))
+        st.configure("Accent.TButton",font=("Segoe UI",10,"bold"),padding=10,background=accent,foreground="white")
+        st.map("Accent.TButton",background=[("active","#8178ff")])
+        st.configure("Treeview",rowheight=32,background=card,fieldbackground=card,foreground=fg)
+        st.configure("Treeview.Heading",font=("Segoe UI",10,"bold"))
+
+    def build_ui(self):
+        self.style()
+        self.side=ttk.Frame(self.root,width=210); self.side.pack(side="left",fill="y"); self.side.pack_propagate(False)
+        ttk.Label(self.side,text="⚡ TechMatch",font=("Segoe UI",20,"bold")).pack(pady=(28,4))
+        ttk.Label(self.side,text="AI Device Advisor",style="Sub.TLabel").pack(pady=(0,25))
+        for name,fn in [("🏠  Dashboard",self.home),("🤖  AI Advisor",self.advisor),("📦  Products",self.products),("⚖  Compare",self.compare),("🧩  PC Builder",self.pc_builder),("❤️  Wishlist",self.wishlist),("📊  Analytics",self.analytics)]:
+            ttk.Button(self.side,text=name,command=fn).pack(fill="x",padx=16,pady=4)
+        ttk.Button(self.side,text="☼  Toggle Theme",command=self.toggle).pack(side="bottom",fill="x",padx=16,pady=20)
+        self.main=ttk.Frame(self.root); self.main.pack(side="left",fill="both",expand=True,padx=25,pady=20)
+
+    def clear(self):
+        for w in self.main.winfo_children(): w.destroy()
+        self.style()
+
+    def header(self,title,sub=""):
+        ttk.Label(self.main,text=title,style="Title.TLabel").pack(anchor="w")
+        if sub: ttk.Label(self.main,text=sub,style="Sub.TLabel").pack(anchor="w",pady=(4,20))
+
+    def toggle(self): self.dark=not self.dark; self.clear(); self.home()
+
+    def home(self):
+        self.clear(); self.header("Smart Device Recommendation","Find the right technology for your work, study, gaming and budget.")
+        box=ttk.Frame(self.main,style="Card.TFrame"); box.pack(fill="x",pady=10)
+        ttk.Label(box,text="Tell TechMatch what you need",style="Card.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w",padx=18,pady=(16,8))
+        self.query=tk.Text(box,height=4,font=("Segoe UI",12),bg="#202632" if self.dark else "white",fg="white" if self.dark else "#111",insertbackground="white",relief="flat")
+        self.query.pack(fill="x",padx=18,pady=8); self.query.insert("1.0","I need a laptop for coding and gaming under ₹80000, 16GB RAM and 512GB storage")
+        ttk.Button(box,text="✨ Find My Device",style="Accent.TButton",command=self.run_ai).pack(anchor="e",padx=18,pady=(5,18))
+        stats=ttk.Frame(self.main); stats.pack(fill="x",pady=20)
+        con=db(); counts=con.execute("SELECT category,COUNT(*) FROM products GROUP BY category").fetchall(); total=sum(x[1] for x in counts); con.close()
+        for text,val in [("Products",total),("Categories",len(counts)),("AI Profiles",8),("PC Rules","25+")]:
+            f=ttk.Frame(stats,style="Card.TFrame"); f.pack(side="left",fill="x",expand=True,padx=5)
+            ttk.Label(f,text=str(val),style="Card.TLabel",font=("Segoe UI",22,"bold")).pack(pady=(18,2))
+            ttk.Label(f,text=text,style="Card.TLabel").pack(pady=(0,18))
+        ttk.Label(self.main,text="Quick profiles",font=("Segoe UI",15,"bold")).pack(anchor="w",pady=(10,8))
+        q=ttk.Frame(self.main); q.pack(fill="x")
+        for t in ["🎓 CSE Student","👨‍💻 Programming","🤖 AI / ML","🎮 Gaming","🎬 Editing","✈ Lightweight"]:
+            ttk.Button(q,text=t,command=lambda x=t:self.quick(x)).pack(side="left",padx=4)
+
+    def quick(self,x):
+        mapping={"🎓 CSE Student":"laptop coding programming Android Studio under ₹80000 16GB 512GB","👨‍💻 Programming":"laptop programming coding under ₹80000 16GB 512GB","🤖 AI / ML":"laptop AI ML Python under ₹120000 16GB 1TB gaming","🎮 Gaming":"laptop gaming under ₹90000 16GB 512GB","🎬 Editing":"laptop video editing under ₹100000 16GB 1TB","✈ Lightweight":"laptop portable lightweight battery under ₹100000"}
+        self.query.delete("1.0","end"); self.query.insert("1.0",mapping.get(x,x)); self.run_ai()
+
+    def run_ai(self):
+        text=self.query.get("1.0","end").strip(); cat,bud,tasks,ram,storage,pri=parse_requirements(text)
+        self.show_results(cat,bud,tasks,ram,storage,pri,text)
+
+    def show_results(self,cat,bud,tasks,ram,storage,pri,query=""):
+        self.clear(); self.header(f"Recommendations for {cat}",f"{query or 'Personalized results'}")
+        results=recommend(cat,bud,tasks,ram,storage,pri); self.current=results
+        if not results:
+            ttk.Label(self.main,text="No matching products found. Try another category.").pack(pady=30); return
+        bar=ttk.Frame(self.main); bar.pack(fill="x",pady=(0,12))
+        ttk.Button(bar,text="⚖ Compare Selected",command=self.compare).pack(side="left")
+        ttk.Button(bar,text="Export CSV",command=self.export_current).pack(side="left",padx=6)
+        for score,r in results:
+            card=ttk.Frame(self.main,style="Card.TFrame"); card.pack(fill="x",pady=6)
+            left=ttk.Frame(card,style="Card.TFrame"); left.pack(side="left",fill="both",expand=True,padx=16,pady=12)
+            ttk.Label(left,text=f"{r[1]}  •  {r[2]}",style="Card.TLabel",font=("Segoe UI",14,"bold")).pack(anchor="w")
+            ttk.Label(left,text=f"₹{r[3]:,.0f}   ⭐ {r[4]:.1f}   Quality {r[5]:.1f}/10   Performance {r[6]:.1f}/10",style="Card.TLabel").pack(anchor="w",pady=5)
+            details=f"RAM: {r[8] or '—'}GB   Storage: {r[9] or '—'}GB   Screen: {r[10] or '—'}\"   CPU: {r[13] or '—'}   GPU: {r[12] or '—'}"
+            ttk.Label(left,text=details,style="Card.TLabel").pack(anchor="w")
+            why=self.why(r,bud,tasks,ram,storage)
+            ttk.Label(left,text="Why: "+why,style="Card.TLabel",wraplength=760).pack(anchor="w",pady=5)
+            right=ttk.Frame(card,style="Card.TFrame"); right.pack(side="right",padx=16,pady=12)
+            ttk.Label(right,text=f"{min(99,round(score))}%",style="Card.TLabel",font=("Segoe UI",20,"bold")).pack()
+            ttk.Label(right,text="MATCH",style="Card.TLabel").pack()
+            ttk.Button(right,text="Details",command=lambda rr=r:self.details(rr)).pack(pady=4)
+            ttk.Button(right,text="Compare",command=lambda rr=r:self.toggle_select(rr)).pack(pady=2)
+            ttk.Button(right,text="♡ Save",command=lambda rr=r:self.save(rr)).pack(pady=2)
+            ttk.Button(right,text="Buy / Search",command=lambda rr=r:webbrowser.open(rr[22])).pack(pady=2)
+
+    def why(self,r,bud,tasks,ram,storage):
+        a=[]
+        if bud and r[3]<=bud:a.append("within budget")
+        if ram and r[8]>=ram:a.append("meets RAM target")
+        if storage and r[9]>=storage:a.append("meets storage target")
+        for t in tasks:
+            if (t=="gaming" and r[16]>=85) or (t=="coding" and r[17]>=85) or (t=="ai_ml" and r[18]>=85) or (t=="editing" and r[19]>=85): a.append(t.replace("_"," ")+" fit")
+        return ", ".join(a[:4]) or "strong overall specifications"
+
+    def details(self,r):
+        w=tk.Toplevel(self.root); w.title(r[1]); w.geometry("600x650")
+        w.configure(bg="#10131a" if self.dark else "white")
+        frame=ttk.Frame(w); frame.pack(fill="both",expand=True,padx=25,pady=20)
+        ttk.Label(frame,text=r[1],style="Title.TLabel").pack(anchor="w")
+        ttk.Label(frame,text=f"₹{r[3]:,.0f}  |  ⭐ {r[4]:.1f}  |  Quality {r[5]:.1f}/10",style="Sub.TLabel").pack(anchor="w",pady=5)
+        fields=[("Brand",r[15]),("Category",r[2]),("CPU",r[13]),("GPU",r[12]),("RAM",f"{r[8]} GB"),("Storage",f"{r[9]} GB"),("Screen",f'{r[10]}"'),("Battery",f"{r[11]}"),("Weight",f"{r[14]} kg"),("Gaming",r[16]),("Coding",r[17]),("AI/ML",r[18]),("Editing",r[19]),("Portability",r[20]),("Camera",r[21])]
+        for k,v in fields: ttk.Label(frame,text=f"{k:<14} {v}",font=("Consolas",11)).pack(anchor="w",pady=5)
+        ttk.Button(frame,text="Open retailer/search page",style="Accent.TButton",command=lambda:webbrowser.open(r[22])).pack(pady=20)
+
+    def products(self):
+        self.clear(); self.header("Product Explorer","Search and filter the local catalogue.")
+        top=ttk.Frame(self.main); top.pack(fill="x",pady=5)
+        self.search=tk.StringVar(); ttk.Entry(top,textvariable=self.search).pack(side="left",fill="x",expand=True)
+        cats=["All","Laptop","Phone","Tablet","Monitor","Keyboard","Mouse","CPU","GPU","RAM","SSD"]
+        self.cat=tk.StringVar(value="All"); ttk.Combobox(top,textvariable=self.cat,values=cats,state="readonly",width=15).pack(side="left",padx=8)
+        ttk.Button(top,text="Search",command=self.load_products).pack(side="left")
+        ttk.Button(top,text="Add Selected to Compare",command=self.add_tree_to_compare).pack(side="left",padx=6)
+        self.tree=ttk.Treeview(self.main,columns=("name","cat","price","rating","quality","perf","value"),show="headings")
+        for c,h in zip(self.tree["columns"],["Product","Category","Price","Rating","Quality","Performance","Value"]):
+            self.tree.heading(c,text=h); self.tree.column(c,width=130)
+        self.tree.column("name",width=260); self.tree.pack(fill="both",expand=True,pady=15); self.load_products()
+
+    def load_products(self):
+        for x in self.tree.get_children(): self.tree.delete(x)
+        con=db(); q="SELECT * FROM products WHERE name LIKE ?"; args=[f"%{self.search.get()}%"]
+        if self.cat.get()!="All": q+=" AND category=?"; args.append(self.cat.get())
+        for r in con.execute(q,args): self.tree.insert("", "end", values=(r[1],r[2],f"₹{r[3]:,.0f}",r[4],r[5],r[6],r[7]),iid=str(r[0]))
+        con.close()
+
+    def add_tree_to_compare(self):
+        rows=self.get_selected_rows()
+        if not rows:
+            messagebox.showwarning("Compare", "Select one or more products first.")
+            return
+        self.selected.update(r[0] for r in rows)
+        messagebox.showinfo("Compare", f"Added {len(rows)} product(s) to comparison. Select at least 2.")
+
+    def get_selected_rows(self):
+        ids=self.tree.selection() if hasattr(self,"tree") else []
+        if not ids: return []
+        con=db(); out=[]
+        for i in ids:
+            r=con.execute("SELECT * FROM products WHERE id=?",(i,)).fetchone()
+            if r: out.append(r)
+        con.close(); return out
+
+    def compare(self):
+        self.clear(); self.header("Compare Products","Select products from the Product Explorer, or use Compare buttons in recommendations.")
+        con=db(); rows=[]
+        for pid in self.selected:
+            r=con.execute("SELECT * FROM products WHERE id=?",(pid,)).fetchone()
+            if r: rows.append(r)
+        con.close()
+        if len(rows)<2:
+            ttk.Label(self.main,text="Select at least 2 products in Product Explorer, then open Compare.").pack(pady=30)
+            ttk.Button(self.main,text="Open Product Explorer",command=self.products).pack()
+            return
+        cols=["Specification"]+[r[1] for r in rows]
+        tree=ttk.Treeview(self.main,columns=cols,show="headings")
+        for c in cols: tree.heading(c,text=c); tree.column(c,width=180)
+        data=[("Price",lambda r:f"₹{r[3]:,.0f}"),("Rating",lambda r:r[4]),("Quality",lambda r:r[5]),("Performance",lambda r:r[6]),("Value",lambda r:r[7]),("RAM",lambda r:r[8]),("Storage",lambda r:r[9]),("CPU",lambda r:r[12]),("GPU",lambda r:r[11]),("Weight",lambda r:r[14]),("Gaming",lambda r:r[16]),("Coding",lambda r:r[17]),("AI/ML",lambda r:r[18]),("Editing",lambda r:r[19])]
+        for name,fn in data: tree.insert("", "end",values=[name]+[fn(r) for r in rows])
+        tree.pack(fill="both",expand=True)
+
+    def toggle_select(self,r):
+        self.selected.add(r[0]); messagebox.showinfo("Compare",f"{r[1]} selected. Open Compare from the sidebar.")
+
+    def save(self,r):
+        con=db(); con.execute("INSERT INTO wishlist(product_id,created) VALUES(?,?)",(r[0],datetime.now().isoformat(timespec="seconds"))); con.commit(); con.close()
+        messagebox.showinfo("Saved",f"{r[1]} added to wishlist.")
+
+    def wishlist(self):
+        self.clear(); self.header("Wishlist","Your saved devices.")
+        con=db(); rows=con.execute("SELECT p.* FROM products p JOIN wishlist w ON p.id=w.product_id ORDER BY w.id DESC").fetchall(); con.close()
+        if not rows: ttk.Label(self.main,text="Wishlist is empty.").pack(pady=30); return
+        for r in rows:
+            f=ttk.Frame(self.main,style="Card.TFrame"); f.pack(fill="x",pady=5)
+            ttk.Label(f,text=f"{r[1]}  •  ₹{r[3]:,.0f}  •  ⭐ {r[4]}",style="Card.TLabel",font=("Segoe UI",13,"bold")).pack(side="left",padx=15,pady=14)
+            ttk.Button(f,text="Details",command=lambda rr=r:self.details(rr)).pack(side="right",padx=10)
+
+    def advisor(self): self.home()
+
+    def pc_builder(self):
+        self.clear(); self.header("PC Build Planner","Choose components and check basic compatibility.")
+        con=db()
+        data={}
+        for cat in ["CPU","GPU","RAM","SSD"]:
+            data[cat]=con.execute("SELECT * FROM products WHERE category=?",(cat,)).fetchall()
+        con.close()
+        vars={}
+        for cat in data:
+            ttk.Label(self.main,text=cat,font=("Segoe UI",13,"bold")).pack(anchor="w",pady=(10,3))
+            v=tk.StringVar(value=data[cat][0][1] if data[cat] else "")
+            vars[cat]=v
+            ttk.Combobox(self.main,textvariable=v,values=[x[1]+" — ₹"+f"{x[3]:,.0f}" for x in data[cat]],state="readonly",width=60).pack(anchor="w")
+        out=tk.StringVar()
+        ttk.Button(self.main,text="Calculate Build",style="Accent.TButton",command=lambda:self.calc_build(vars,data,out)).pack(pady=20)
+        ttk.Label(self.main,textvariable=out,font=("Segoe UI",13)).pack(anchor="w")
+
+    def calc_build(self,vars,data,out):
+        total=0; names=[]
+        for cat in data:
+            chosen=vars[cat].get()
+            if chosen:
+                name=chosen.split(" — ")[0]
+                r=next((x for x in data[cat] if x[1]==name),None)
+                if r: total+=r[3]; names.append(name)
+        status="🟢 Basic configuration valid"
+        if any("RTX 5070" in x for x in names) and any("Ryzen 5" in x for x in names): status="🟡 Valid, but a stronger CPU may better balance this GPU."
+        out.set(f"{status}\nTotal: ₹{total:,.0f}\nComponents: {', '.join(names)}")
+
+    def analytics(self):
+        self.clear(); self.header("Analytics","Catalogue overview.")
+        con=db(); rows=con.execute("SELECT category,COUNT(*),AVG(price),AVG(rating),AVG(quality) FROM products GROUP BY category").fetchall(); con.close()
+        tree=ttk.Treeview(self.main,columns=("cat","count","avgprice","rating","quality"),show="headings")
+        for c,h in zip(tree["columns"],["Category","Products","Average Price","Avg Rating","Avg Quality"]): tree.heading(c,text=h)
+        for r in rows: tree.insert("", "end",values=(r[0],r[1],f"₹{r[2]:,.0f}",f"{r[3]:.2f}",f"{r[4]:.2f}"))
+        tree.pack(fill="both",expand=True)
+
+    def export_current(self):
+        if not self.current: return
+        path=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
+        if not path:return
+        with open(path,"w",newline="",encoding="utf-8") as f:
+            w=csv.writer(f); w.writerow(["Match","Product","Category","Price","Rating","Quality","Performance","Value","RAM","Storage"])
+            for score,r in self.current: w.writerow([round(score),r[1],r[2],r[3],r[4],r[5],r[6],r[7],r[8],r[9]])
+        messagebox.showinfo("Exported","Recommendation report saved.")
+
+if __name__ == "__main__":
+    init_db()
+    root=tk.Tk(); App(root); root.mainloop()
